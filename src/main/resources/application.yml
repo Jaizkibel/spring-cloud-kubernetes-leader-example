@@ -5,5 +5,13 @@ spring:
     kubernetes:
       leader:
         enabled: ${KUBERNETES_LEADER_ELECTION:false}
+
+app:
+  leader:
+    lease-name: ${LEASE_NAME:leader-example}
+    lease-duration-seconds: ${LEASE_DURATION_SECONDS:30}
+    renew-deadline-seconds: ${RENEW_DEADLINE_SECONDS:20}
+    retry-period-millis: ${RETRY_PERIOD_MILLIS:5000}
+
 server:
   port: 8080
