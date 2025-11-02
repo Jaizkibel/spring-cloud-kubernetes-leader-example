@@ -13,18 +13,18 @@ This project shows how to implement leader election in Spring Boot applications 
 ## How it works
 This example uses Kubernetes Leases for leader election through the Fabric8 Kubernetes client. Leases are Kubernetes coordination objects specifically designed for leader election scenarios. The application uses the `io.fabric8.kubernetes.client.extended.leaderelection.LeaderElector` class to participate in the leader election process.
 
-The Lease resource is pre-configured in [deployment.yml](deployment.yml) and created on apply. This ensures exact control over the Lease's initial state (name, namespace, duration). The app detects and uses this existing Lease directly—no dynamic creation needed.
+The Lease resource is not pre-created. The application uses Fabric8's LeaderElector with a LeaseLock; if the Lease does not exist, it will be created automatically by the client (requires create/update RBAC on coordination.k8s.io Leases). This avoids issues with partially-initialized Leases.
 
 When multiple replicas start, they compete to acquire the lease by updating its `holderIdentity` field. Only one instance succeeds and becomes the leader. The leader continuously renews the lease (updating `renewTime`) within the renew deadline. If the leader fails to renew, followers can acquire leadership.
 
 The leader election process is configured with:
-- **Lease Name**: `leader-example` (pre-defined in deployment.yml; overridable via LEASE_NAME)
-- **Namespace**: `default` (pre-defined; overridable via LEASE_NAMESPACE if needed)
-- **Lease Duration**: 30 seconds (pre-set in Lease spec; app respects it)
-- **Renew Deadline**: 20 seconds (app-controlled via LEASE_RENEW_DEADLINE_SECONDS)
+- **Lease Name**: `leader-example` (default; overridable via LEASE_NAME)
+- **Namespace**: `default` (namespace of the Deployment; overridable via LEASE_NAMESPACE if needed)
+- **Lease Duration**: 30 seconds (default; controlled by app config)
+- **Renew Deadline**: 20 seconds (app-controlled via RENEW_DEADLINE_SECONDS)
 - **Retry Period**: 5000 milliseconds (app-controlled via LEASE_RETRY_PERIOD_MILLIS)
 
-These values can be configured via environment variables in [deployment.yml](deployment.yml) or the `application.yml` file. The pre-configured Lease matches the defaults for consistency.
+These values can be configured via environment variables in [deployment.yml](deployment.yml) or the `application.yml` file.
 
 ## Requirements
 
@@ -64,7 +64,7 @@ The application testing is automatized in deploy.sh and deploy.bat files, you ca
 If script runs correctly, you can view logs of application instances. To make this easy, run this command in a terminal: `minikube dashboard`, which launches a web application to show Minikube's information and control it. In this dashboard you can view pods deployed and show logs.
 
 To verify the example works correctly:
-1. Apply [deployment.yml](deployment.yml): The Lease will be created first in the default namespace.
+1. Apply [deployment.yml](deployment.yml): RBAC and the Deployment will be created. The first pod to win election will create the Lease automatically in the namespace.
 2. Only one of the two instances should show the message "I'm currently the leader" in the log.
 3. The other instance should show "I'm not the leader".
 4. If you delete the leader pod, the other instance will acquire leadership and start showing "I'm currently the leader" (within ~20-30 seconds based on timings).
@@ -73,10 +73,10 @@ To verify the example works correctly:
 The Lease persists after undeploy; clean it up manually if needed: `kubectl delete lease leader-example -n default`.
 
 ## Configuration
-The leader election behavior can be customized through environment variables in the deployment (overrides pre-configured Lease where applicable):
+The leader election behavior can be customized through environment variables in the deployment:
 - `KUBERNETES_LEADER_ELECTION`: Enable/disable leader election (default: false)
 - `LEASE_NAME`: Name of the Lease resource (default: leader-example; matches pre-configured)
-- `LEASE_DURATION_SECONDS`: How long the lease is valid (default: 30; pre-set in Lease spec)
+- `LEASE_DURATION_SECONDS`: How long the lease is valid (default: 30)
 - `RENEW_DEADLINE_SECONDS`: Deadline for renewing the lease (default: 20)
 - `RETRY_PERIOD_MILLIS`: How often non-leaders retry to acquire leadership (default: 5000)
 
