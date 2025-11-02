@@ -14,5 +14,7 @@ else
 fi
 
 eval "$(minikube docker-env)"
+# Task bootBuildImage is provided by Spring Boot plugin
+# no Dockerfile needed
 ./gradlew bootBuildImage --imageName=leader_example
 kubectl apply -f deployment.yml
