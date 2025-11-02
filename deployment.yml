@@ -1,12 +1,3 @@
-apiVersion: coordination.k8s.io/v1
-kind: Lease
-metadata:
-  name: leader-example
-  namespace: default
-spec:
-  holderIdentity: ""
-  leaseDurationSeconds: 30
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

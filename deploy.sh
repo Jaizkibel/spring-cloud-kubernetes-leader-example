@@ -17,4 +17,6 @@ eval "$(minikube docker-env)"
 # Task bootBuildImage is provided by Spring Boot plugin
 # no Dockerfile needed
 ./gradlew bootBuildImage --imageName=leader_example
+# Remove any stale Lease to avoid NPEs when re-deploying during development
+kubectl delete lease leader-example -n default --ignore-not-found
 kubectl apply -f deployment.yml
