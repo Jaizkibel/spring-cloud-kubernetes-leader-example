@@ -1,5 +1,5 @@
 # Spring Cloud Kubernetes Leader Election Example
-This project contains an example of how to use leader selection in a Kubernetes cluster, using only the Kubernetes API, through a Spring Boot compatible library, by [fabric8](https://fabric8.io/).
+This project demonstrates leader election in a Kubernetes cluster using Kubernetes Leases and the [Fabric8 Kubernetes Client](https://github.com/fabric8io/kubernetes-client).
 
 ## Purpose and motivations
 Currently, the microservices architecture is fully extended and is one of the most widely used by all companies to implement their solutions, although older ones such as the monolithic are still present for certain cases where they are more appropriate and other, newer ones, such as serverless are beginning to be more recurrent. The most natural thing to do is to deploy these microservices in container-based environments, such as Kubernetes, which facilitate the deployment and maintenance of our applications. A very important thing to keep in mind when developing our microservices is high availability, i.e. ensuring that the application can process a high number of requests without crashing or failing. In Kubernetes, to solve this, replicas are used; that is, several instances of the same microservice are created and requests are redirected to one replica or another, depending on the load and the configuration that has been made. 
@@ -8,10 +8,20 @@ For example, nothing should be stored in the microservice's own memory, because 
 
 However, in many cases, it is quite advisable to take advantage of what the existing infrastructure offers, as setting up solutions like Zookeeper can lead to additional costs for the infrastructure, or implementing custom solutions, such as using Redis, can complicate the development process. 
 
-This project aims to show a simple example of how to solve leader selection in Spring Boot applications, making use of the Kubernetes environment, all implemented with the ‘org.springframework.cloud:spring-cloud-kubernetes-fabric8-leader’ library, which is a simple solution and leverages Kubernetes infrastructure.
+This project shows how to implement leader election in Spring Boot applications using Kubernetes infrastructure, specifically using the Fabric8 Kubernetes client to manage Lease-based leader election.
 
 ## How it works
-This example used the fabric8 leader library, which uses the Kubernetes API client to interact with kubernetes cluster. The resource used by the library to manage leader election are the ConfigMaps; a ConfigMap is an object stored in Kubernetes cluster and contains multiple keys and values associated to that keys, so allows to store information in memory. The fabric8 library leverages Kubernetes' ConfigMaps to store the name of the leader, so, when an instance check if exists any leader and the ConfigMap is set with anyone, the instance actuate as a non-leader instance.
+This example uses Kubernetes Leases for leader election through the Fabric8 Kubernetes client. Leases are Kubernetes coordination objects specifically designed for leader election scenarios. The application uses the `io.fabric8.kubernetes.client.extended.leaderelection.LeaderElector` class to participate in the leader election process.
+
+When multiple replicas of the application start, they compete to acquire the lease. Only one instance will successfully acquire it and become the leader. The leader continuously renews the lease to maintain leadership. If the leader fails to renew (due to crash, network issues, etc.), other instances can acquire the lease and become the new leader.
+
+The leader election process is configured with:
+- **Lease Name**: The name of the Lease resource in Kubernetes (default: `leader-example`)
+- **Lease Duration**: How long the lease is valid without renewal (default: 30 seconds)
+- **Renew Deadline**: Deadline for the leader to renew the lease (default: 20 seconds)
+- **Retry Period**: How often non-leaders check if they can acquire leadership (default: 5000 milliseconds)
+
+These values can be configured via environment variables or the `application.yml` file.
 
 ## Requirements
 
@@ -29,11 +39,14 @@ This repository has a Spring Boot project structure, with dependency management 
 
 * gradle: Folder with a Gradle wrapper to build project without Gradle installed on system
 * src: Folder with all Java project code and resources
+  * `LeaseLeaderManager.java`: Manages the Lease-based leader election process using Fabric8's LeaderElector
+  * `LeaderEvents.java`: Tracks leadership state (leader or not) for the application
+  * `ScheduledTask.java`: Example scheduled task that only runs on the leader instance
 * .gitignore: Git ignore file to don't track some files
-* build.gradle: Gradle project configuration, used to define some tasks and project dependencies
+* build.gradle: Gradle project configuration, uses `io.fabric8:kubernetes-client` for leader election
 * deploy.bat: Windows terminal script to automatize build and deploy on Minikube
 * deploy.sh: Bash script to automatize build and deploy on Minikube
-* deployment.yml: YAML file with all objects to be deployed on Minikube for local testing
+* deployment.yml: YAML file with all Kubernetes objects including RBAC for Lease access
 * gradlew: Script for Linux and MacOS to run Gradle wrapper
 * gradlew.bat: Script for Windows to run Gradle wrapper
 * settings.gradle: Gradle project's settings file. In this case, only contains project name
@@ -45,4 +58,26 @@ The application testing is automatized in deploy.sh and deploy.bat files, you ca
 2. Then, builds the SpringBoot application and generates a Docker image using SpringBoot's custom gradle task. This task creates an image and push it to local registry automatically.
 3. Applies the deployment which creates instances of our application. Also generates another objects that the application needs, like roles, role bindings, service accounts,...
 
-If script runs correctly, you can show logs of application instances. To make this easy, run this command in a terminal: "minikube dashboard", this launches a web application to show Minikube's information and control it. In this dashboard you can show pods deployed and show logs. To check this example is successfull, only one of two instances shows the message "I'm currently the leader" in the log, and, if you deletes the instance, then, the another instance is the leader and starts to show the message in its log.
+If script runs correctly, you can view logs of application instances. To make this easy, run this command in a terminal: `minikube dashboard`, which launches a web application to show Minikube's information and control it. In this dashboard you can view pods deployed and show logs.
+
+To verify the example works correctly:
+1. Only one of the two instances should show the message "I'm currently the leader" in the log
+2. The other instance should show "I'm not the leader"
+3. If you delete the leader pod, the other instance will acquire leadership and start showing "I'm currently the leader"
+4. You can also verify the Lease object in Kubernetes: `kubectl get lease leader-example -o yaml`
+
+## Configuration
+The leader election behavior can be customized through environment variables in the deployment:
+- `KUBERNETES_LEADER_ELECTION`: Enable/disable leader election (default: false)
+- `LEASE_NAME`: Name of the Lease resource (default: leader-example)
+- `LEASE_DURATION_SECONDS`: How long the lease is valid (default: 30)
+- `RENEW_DEADLINE_SECONDS`: Deadline for renewing the lease (default: 20)
+- `RETRY_PERIOD_MILLIS`: How often non-leaders retry to acquire leadership (default: 5000)
+
+## RBAC Requirements
+The application requires specific Kubernetes permissions to perform leader election:
+- **API Group**: `coordination.k8s.io`
+- **Resources**: `leases`
+- **Verbs**: `get`, `list`, `watch`, `create`, `update`, `patch`
+
+These permissions are configured in the `deployment.yml` file through a Role and RoleBinding.
